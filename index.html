@@ -1,11 +1,18 @@
 <!DOCTYPE html>
 <html lang="es">
-  <head>
+<head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="https://upload.wikimedia.org/wikipedia/commons/f/fc/Flag_of_Mexico.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Chilango Guess</title>
+    <link rel="icon" type="image/svg+xml" href="https://upload.wikimedia.org/wikipedia/commons/f/fc/Flag_of_Mexico.svg" />
+    
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Babel Standalone for in-browser compilation -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Google Fonts -->
     <style>
       @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap');
       body {
@@ -17,19 +24,458 @@
       .perspective-text {
         text-shadow: 2px 2px 0px #000;
       }
+      /* Animation Utilities */
+      @keyframes bounce-in {
+        0% { transform: scale(0.5); opacity: 0; }
+        60% { transform: scale(1.1); opacity: 1; }
+        100% { transform: scale(1); }
+      }
+      .animate-bounce-in {
+        animation: bounce-in 0.6s cubic-bezier(0.25, 1.4, 0.5, 1) forwards;
+      }
+      @keyframes ping-once {
+          0% { transform: scale(1); opacity: 1; }
+          50% { transform: scale(1.3); opacity: 0.8; }
+          100% { transform: scale(1.5); opacity: 0; }
+      }
+      .animate-ping-once {
+          animation: ping-once 0.5s ease-out forwards;
+      }
     </style>
-  <script type="importmap">
+
+    <!-- Import Map for Modules -->
+    <script type="importmap">
 {
   "imports": {
-    "@google/genai": "https://esm.sh/@google/genai@^1.34.0",
+    "react": "https://esm.sh/react@19.0.0-rc-6f2756d110-20241029",
+    "react-dom/client": "https://esm.sh/react-dom@19.0.0-rc-6f2756d110-20241029/client",
+    "@google/genai": "https://esm.sh/@google/genai@0.1.0",
     "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "react/": "https://esm.sh/react@^19.2.3/",
-    "react": "https://esm.sh/react@^19.2.3"
+    "react/": "https://esm.sh/react@^19.2.3/"
   }
 }
 </script>
 </head>
-  <body class="bg-slate-900 text-white overflow-hidden">
+<body class="bg-slate-900 text-white overflow-hidden">
     <div id="root"></div>
-  </body>
+
+    <!-- Process Env Polyfill -->
+    <script>
+      window.process = {
+        env: {
+          // API Key Configurada
+          API_KEY: 'AIzaSyCfOp-7g_Hc_eCWIWhATd2cquXORlaYEl4' 
+        }
+      };
+    </script>
+
+    <!-- Main Application Script -->
+    <script type="text/babel" data-type="module" data-presets="typescript,react">
+        import React, { useState, useEffect, useRef, useCallback } from 'react';
+        import { createRoot } from 'react-dom/client';
+        import { GoogleGenAI, Type } from "@google/genai";
+
+        // --- TYPES ---
+        const GameState = {
+            MENU: 'MENU',
+            LOADING: 'LOADING',
+            INSTRUCTIONS: 'INSTRUCTIONS',
+            PLAYING: 'PLAYING',
+            FINISHED: 'FINISHED'
+        };
+
+        const TurnStatus = {
+            NEUTRAL: 'NEUTRAL',
+            CORRECT: 'CORRECT',
+            PASS: 'PASS'
+        };
+
+        // --- SERVICE ---
+        const getFallbackWords = () => [
+            { word: "Chale", meaning: "Expresión de decepción o sorpresa." },
+            { word: "Cámara", meaning: "Aceptación, despedida o advertencia." },
+            { word: "Guajolota", meaning: "Torta de tamal." },
+            { word: "Caer el veinte", meaning: "Entender algo de repente." },
+            { word: "Hacerse pato", meaning: "Ignorar algo o perder el tiempo." },
+            { word: "Aguas", meaning: "¡Cuidado!" },
+            { word: "Sepa la bola", meaning: "Nadie sabe." },
+            { word: "Fresa", meaning: "Persona presumida o de clase alta." },
+            { word: "Godínez", meaning: "Oficinista tradicional." },
+            { word: "Chamba", meaning: "Trabajo." },
+            { word: "Nel", meaning: "No." },
+            { word: "Rifarse", meaning: "Hacer algo muy bien o arriesgarse." },
+            { word: "Cantón", meaning: "Casa." },
+            { word: "Chido", meaning: "Bonito, agradable." },
+            { word: "Qué onda", meaning: "Saludo informal." }
+        ];
+
+        const fetchChilangoWords = async () => {
+            const apiKey = process.env.API_KEY;
+            
+            // Si no hay API key o es muy corta, usar fallback inmediatamente
+            if (!apiKey || apiKey.length < 10) {
+                console.warn("Using fallback words (No API Key)");
+                await new Promise(r => setTimeout(r, 1000)); // Fake delay
+                return getFallbackWords();
+            }
+
+            try {
+                const ai = new GoogleGenAI({ apiKey });
+                const response = await ai.models.generateContent({
+                    model: "gemini-1.5-flash", 
+                    contents: {
+                        role: "user",
+                        parts: [{ text: `Genera una lista de 20 palabras o frases coloquiales populares de la Ciudad de México.
+                        Deben ser divertidas para el juego de Charadas (adivinar palabras).
+                        Variedad: mezcla verbos, sustantivos y frases cortas.
+                        Devuelve JSON con 'word' y 'meaning'.` }]
+                    },
+                    config: {
+                        responseMimeType: "application/json",
+                        responseSchema: {
+                            type: Type.ARRAY,
+                            items: {
+                                type: Type.OBJECT,
+                                properties: {
+                                    word: { type: Type.STRING },
+                                    meaning: { type: Type.STRING },
+                                },
+                                required: ["word", "meaning"],
+                            },
+                        },
+                    },
+                });
+
+                if (response.text) {
+                    return JSON.parse(response.text);
+                }
+                return getFallbackWords();
+            } catch (error) {
+                console.error("Error Gemini:", error);
+                return getFallbackWords();
+            }
+        };
+
+        // --- COMPONENTS ---
+
+        const ResultScreen = ({ results, onRestart, onMenu }) => {
+            const score = results.filter(r => r.status === TurnStatus.CORRECT).length;
+
+            return (
+                <div className="min-h-screen bg-pink-600 p-6 flex flex-col items-center overflow-y-auto">
+                    <h2 className="text-5xl font-black text-yellow-300 mb-2 perspective-text mt-8">¡Se acabó!</h2>
+                    
+                    <div className="bg-white text-black rounded-3xl p-6 w-full max-w-md shadow-2xl mb-8 text-center">
+                        <p className="text-xl font-bold text-gray-500 uppercase">Puntaje</p>
+                        <p className="text-8xl font-black text-pink-600">{score}</p>
+                        <p className="text-gray-400 font-medium">de {results.length} palabras</p>
+                    </div>
+
+                    <div className="w-full max-w-md space-y-3 mb-24">
+                        {results.map((res, idx) => (
+                            <div key={idx} className={`flex items-center p-4 rounded-xl shadow-md ${res.status === TurnStatus.CORRECT ? 'bg-green-100 border-l-8 border-green-500' : 'bg-red-100 border-l-8 border-red-500'}`}>
+                                <div className="flex-1">
+                                    <span className="text-xl font-bold text-gray-800 block">{res.word}</span>
+                                </div>
+                                <div className="text-2xl">
+                                    {res.status === TurnStatus.CORRECT ? '✅' : '❌'}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="fixed bottom-0 left-0 w-full bg-white/10 backdrop-blur-md p-4 flex gap-4 justify-center border-t border-white/20 z-50">
+                        <button onClick={onMenu} className="flex-1 max-w-[200px] bg-gray-800 hover:bg-gray-900 text-white font-bold py-4 rounded-full shadow-lg transition-transform active:scale-95">Menú</button>
+                        <button onClick={onRestart} className="flex-1 max-w-[200px] bg-yellow-400 hover:bg-yellow-300 text-pink-700 font-black py-4 rounded-full shadow-lg transition-transform active:scale-95 text-xl">Otra Vez</button>
+                    </div>
+                </div>
+            );
+        };
+
+        const GameScreen = ({ words, onFinish, gameDuration = 60 }) => {
+            const [currentWordIndex, setCurrentWordIndex] = useState(0);
+            const [timeLeft, setTimeLeft] = useState(gameDuration);
+            const [turnStatus, setTurnStatus] = useState(TurnStatus.NEUTRAL);
+            const [results, setResults] = useState([]);
+            const [sensorActive, setSensorActive] = useState(false);
+            
+            const audioContextRef = useRef(null);
+            const isTransitioningRef = useRef(false);
+
+            const playSound = useCallback((type) => {
+                if (!audioContextRef.current) {
+                    audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                const ctx = audioContextRef.current;
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                const now = ctx.currentTime;
+                
+                if (type === 'correct') {
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(500, now);
+                    osc.frequency.exponentialRampToValueAtTime(1000, now + 0.1);
+                    gain.gain.setValueAtTime(0.5, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+                    osc.start(now);
+                    osc.stop(now + 0.5);
+                } else if (type === 'pass') {
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(200, now);
+                    osc.frequency.linearRampToValueAtTime(100, now + 0.3);
+                    gain.gain.setValueAtTime(0.5, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                    osc.start(now);
+                    osc.stop(now + 0.3);
+                } else { // tick
+                    osc.type = 'square';
+                    osc.frequency.value = 800;
+                    gain.gain.setValueAtTime(0.05, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+                    osc.start(now);
+                    osc.stop(now + 0.05);
+                }
+            }, []);
+
+            useEffect(() => {
+                if (timeLeft <= 0) {
+                    onFinish(results);
+                    return;
+                }
+                const timer = setInterval(() => {
+                    setTimeLeft((prev) => prev - 1);
+                    if (timeLeft <= 5 && timeLeft > 0) playSound('tick');
+                }, 1000);
+                return () => clearInterval(timer);
+            }, [timeLeft, onFinish, results, playSound]);
+
+            const handleNextCard = useCallback((status) => {
+                if (isTransitioningRef.current) return;
+                isTransitioningRef.current = true;
+                setTurnStatus(status);
+                if (status === TurnStatus.CORRECT) playSound('correct');
+                else if (status === TurnStatus.PASS) playSound('pass');
+
+                setResults(prev => [...prev, { word: words[currentWordIndex].word, status }]);
+
+                setTimeout(() => {
+                    if (currentWordIndex < words.length - 1) {
+                        setCurrentWordIndex(prev => prev + 1);
+                        setTurnStatus(TurnStatus.NEUTRAL);
+                        isTransitioningRef.current = false;
+                    } else {
+                        onFinish([...results, { word: words[currentWordIndex].word, status }]);
+                    }
+                }, 800);
+            }, [currentWordIndex, words, onFinish, results, playSound]);
+
+            useEffect(() => {
+                const handleKeyDown = (e) => {
+                    if (isTransitioningRef.current) return;
+                    if (e.key === 'ArrowDown') handleNextCard(TurnStatus.CORRECT);
+                    else if (e.key === 'ArrowUp') handleNextCard(TurnStatus.PASS);
+                };
+                window.addEventListener('keydown', handleKeyDown);
+                return () => window.removeEventListener('keydown', handleKeyDown);
+            }, [handleNextCard]);
+
+            useEffect(() => {
+                let sensorTimeout;
+                const handleMotion = (event) => {
+                    setSensorActive(true);
+                    if (isTransitioningRef.current) return;
+                    
+                    const accel = event.accelerationIncludingGravity;
+                    if (!accel) return;
+                    
+                    const z = accel.z || 0;
+                    const THRESHOLD = 3.0; // Sensibilidad ajustada para Android
+
+                    if (z > THRESHOLD) handleNextCard(TurnStatus.PASS);
+                    else if (z < -THRESHOLD) handleNextCard(TurnStatus.CORRECT);
+                };
+
+                if (window.DeviceMotionEvent) {
+                    window.addEventListener('devicemotion', handleMotion);
+                    sensorTimeout = setTimeout(() => {
+                        if (!sensorActive) {
+                            console.warn("No motion detected");
+                            // No mostramos alerta invasiva aquí para no interrumpir si solo es un retraso
+                        }
+                    }, 3000);
+                }
+                
+                return () => {
+                    if (window.DeviceMotionEvent) window.removeEventListener('devicemotion', handleMotion);
+                    clearTimeout(sensorTimeout);
+                }
+            }, [handleNextCard, sensorActive]);
+
+            let bgColor = "bg-blue-600";
+            let statusText = "";
+            if (turnStatus === TurnStatus.CORRECT) { bgColor = "bg-green-500"; statusText = "¡ESO!"; }
+            else if (turnStatus === TurnStatus.PASS) { bgColor = "bg-orange-500"; statusText = "PASO..."; }
+
+            const currentWord = words[currentWordIndex];
+            if (!currentWord) return null;
+
+            return (
+                <div className={`fixed inset-0 flex flex-col items-center justify-center transition-colors duration-300 ${bgColor}`}>
+                    <div className="absolute top-4 font-bold text-4xl opacity-80 border-4 border-white rounded-full w-20 h-20 flex items-center justify-center bg-black/20 z-10">{timeLeft}</div>
+                    
+                    {!sensorActive && timeLeft < (gameDuration - 3) && (
+                        <div className="absolute top-24 bg-red-500/80 text-white px-4 py-2 rounded-full text-sm animate-pulse z-20 pointer-events-none">
+                            ⚠️ Mueve el celular o usa botones
+                        </div>
+                    )}
+
+                    <div className="w-full h-full flex flex-col items-center justify-center p-8 text-center relative z-0">
+                        {turnStatus === TurnStatus.NEUTRAL ? (
+                            <div className="animate-bounce-in w-full max-w-4xl">
+                                <h1 className="text-[12vh] md:text-[18vh] leading-none font-black uppercase drop-shadow-md break-words mx-4 perspective-text text-yellow-300">{currentWord.word}</h1>
+                                <div className="mt-8 text-xl md:text-2xl opacity-80 font-semibold animate-pulse space-y-2">
+                                    <p className="hidden md:block">↓ Flecha Abajo: Correcto | ↑ Flecha Arriba: Pasar</p>
+                                    <p className="md:hidden">Inclina abajo si adivinan &middot; Inclina arriba para pasar</p>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="animate-ping-once">
+                                <h1 className="text-[10vh] md:text-[12vh] font-black uppercase text-white drop-shadow-lg">{statusText}</h1>
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="absolute bottom-0 w-full flex h-32 opacity-30 hover:opacity-100 transition-opacity z-20">
+                        <button className="flex-1 bg-red-600 hover:bg-red-500 h-full text-white font-bold text-xl flex flex-col items-center justify-center" onClick={() => handleNextCard(TurnStatus.PASS)}>
+                            <span className="text-3xl mb-1">⬆️</span>PASAR
+                        </button>
+                        <button className="flex-1 bg-green-600 hover:bg-green-500 h-full text-white font-bold text-xl flex flex-col items-center justify-center" onClick={() => handleNextCard(TurnStatus.CORRECT)}>
+                            <span className="text-3xl mb-1">⬇️</span>CORRECTO
+                        </button>
+                    </div>
+                </div>
+            );
+        };
+
+        const App = () => {
+            const [gameState, setGameState] = useState(GameState.MENU);
+            const [words, setWords] = useState([]);
+            const [results, setResults] = useState([]);
+            const [loadingText, setLoadingText] = useState("Cargando");
+            const [isPortrait, setIsPortrait] = useState(false);
+
+            useEffect(() => {
+                const checkOrientation = () => setIsPortrait(window.innerHeight > window.innerWidth);
+                checkOrientation();
+                window.addEventListener('resize', checkOrientation);
+                window.addEventListener('orientationchange', checkOrientation);
+                return () => {
+                    window.removeEventListener('resize', checkOrientation);
+                    window.removeEventListener('orientationchange', checkOrientation);
+                };
+            }, []);
+
+            useEffect(() => {
+                if (gameState === GameState.LOADING) {
+                    const interval = setInterval(() => setLoadingText(prev => prev.length > 10 ? "Cargando" : prev + "."), 300);
+                    return () => clearInterval(interval);
+                }
+            }, [gameState]);
+
+            const requestPermissionsAndStart = async () => {
+                try { if (document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen(); } catch (e) {}
+                
+                if (typeof window.DeviceMotionEvent !== 'undefined' && typeof window.DeviceMotionEvent.requestPermission === 'function') {
+                    try {
+                        const permissionState = await window.DeviceMotionEvent.requestPermission();
+                        if (permissionState !== 'granted') alert('Se requiere acceso al movimiento para detectar inclinación.');
+                        startGameSequence();
+                    } catch (error) { startGameSequence(); }
+                } else {
+                    startGameSequence();
+                }
+            };
+
+            const startGameSequence = async () => {
+                setGameState(GameState.LOADING);
+                if ('wakeLock' in navigator) { try { await navigator.wakeLock.request('screen'); } catch (err) {} }
+                if (window.screen?.orientation?.lock) { try { await window.screen.orientation.lock('landscape'); } catch (err) {} }
+
+                const fetchedWords = await fetchChilangoWords();
+                setWords(fetchedWords);
+                setGameState(GameState.INSTRUCTIONS);
+            };
+
+            const showRotationWarning = isPortrait && (gameState === GameState.PLAYING || gameState === GameState.INSTRUCTIONS);
+
+            return (
+                <div className="min-h-screen font-sans">
+                    {showRotationWarning && (
+                        <div className="fixed inset-0 bg-black z-50 flex flex-col items-center justify-center text-white p-8 text-center animate-pulse">
+                            <div className="text-6xl mb-4">🔄</div>
+                            <h2 className="text-3xl font-bold text-yellow-400 mb-4">¡Gira tu celular!</h2>
+                            <p className="text-xl">Juega con el teléfono en horizontal.</p>
+                        </div>
+                    )}
+
+                    {gameState === GameState.MENU && (
+                        <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-purple-700 via-pink-600 to-red-500 p-6 text-center">
+                            <div className="mb-10 animate-bounce">
+                                <h1 className="text-6xl font-black text-yellow-300 drop-shadow-[0_5px_5px_rgba(0,0,0,0.5)] transform -rotate-6">CHILANGO</h1>
+                                <h1 className="text-6xl font-black text-white drop-shadow-[0_5px_5px_rgba(0,0,0,0.5)] transform rotate-2">GUESS</h1>
+                            </div>
+                            <div className="bg-white/20 backdrop-blur-sm p-6 rounded-2xl border border-white/30 max-w-sm mb-10 shadow-xl">
+                                <p className="text-white text-lg font-medium leading-relaxed">
+                                    ¡Adivina la palabra chilanga!<br/><br/>
+                                    En móvil: Ponte el cel en la frente.<br/>En PC: Usa el teclado o mouse.
+                                </p>
+                            </div>
+                            <button onClick={requestPermissionsAndStart} className="bg-yellow-400 hover:bg-yellow-300 text-pink-800 text-2xl font-black py-6 px-12 rounded-full shadow-2xl transition-all transform hover:scale-105 active:scale-95">¡A JUGAR!</button>
+                        </div>
+                    )}
+
+                    {gameState === GameState.LOADING && (
+                        <div className="flex flex-col items-center justify-center min-h-screen bg-indigo-900">
+                            <div className="w-16 h-16 border-8 border-yellow-400 border-t-transparent rounded-full animate-spin mb-8"></div>
+                            <h2 className="text-3xl text-white font-bold">{loadingText}</h2>
+                            <p className="text-indigo-300 mt-4">Consultando con la banda...</p>
+                        </div>
+                    )}
+
+                    {gameState === GameState.INSTRUCTIONS && (
+                        <div className="flex flex-col items-center justify-center min-h-screen bg-black p-8 text-center" onClick={() => setGameState(GameState.PLAYING)}>
+                            <div className="space-y-8 max-w-2xl w-full">
+                                <h2 className="text-4xl font-bold text-yellow-400">Instrucciones</h2>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
+                                    <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
+                                        <h3 className="text-white font-bold text-xl mb-2 border-b border-gray-600 pb-2">📱 En Celular</h3>
+                                        <p className="text-gray-300 text-sm mb-2">Celular en frente (horizontal).</p>
+                                        <div className="flex items-center gap-2 mb-1"><span className="text-2xl">⬇️</span><span className="text-green-400 font-bold">Inclina abajo:</span> Correcto</div>
+                                        <div className="flex items-center gap-2"><span className="text-2xl">⬆️</span><span className="text-red-400 font-bold">Inclina arriba:</span> Pasar</div>
+                                    </div>
+                                    <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
+                                        <h3 className="text-white font-bold text-xl mb-2 border-b border-gray-600 pb-2">💻 En PC / Web</h3>
+                                        <p className="text-gray-300 text-sm mb-2">Usa teclado o botones.</p>
+                                        <div className="flex items-center gap-2 mb-1"><span className="bg-gray-700 px-2 py-1 rounded text-white text-xs">Abajo</span><span className="text-green-400 font-bold">= Correcto</span></div>
+                                        <div className="flex items-center gap-2"><span className="bg-gray-700 px-2 py-1 rounded text-white text-xs">Arriba</span><span className="text-red-400 font-bold">= Pasar</span></div>
+                                    </div>
+                                </div>
+                                <button className="w-full bg-white text-black font-black text-2xl py-6 rounded-xl animate-pulse hover:bg-gray-200 transition-colors">EMPEZAR YA</button>
+                            </div>
+                        </div>
+                    )}
+
+                    {gameState === GameState.PLAYING && <GameScreen words={words} onFinish={handleFinishGame} />}
+                    
+                    {gameState === GameState.FINISHED && <ResultScreen results={results} onRestart={requestPermissionsAndStart} onMenu={() => setGameState(GameState.MENU)} />}
+                </div>
+            );
+        };
+
+        const root = createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
 </html>

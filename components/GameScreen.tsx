@@ -12,6 +12,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({ words, onFinish, gameDur
   const [timeLeft, setTimeLeft] = useState(gameDuration);
   const [turnStatus, setTurnStatus] = useState<TurnStatus>(TurnStatus.NEUTRAL);
   const [results, setResults] = useState<RoundResult[]>([]);
+  const [sensorActive, setSensorActive] = useState(false);
   
   // Audio refs
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -114,9 +115,12 @@ export const GameScreen: React.FC<GameScreenProps> = ({ words, onFinish, gameDur
   }, [handleNextCard]);
 
 
-  // Device Motion Handler (Gravity based - More robust for Android)
+  // Device Motion Handler (Gravity based - Robust for Android)
   useEffect(() => {
+    let sensorTimeout: ReturnType<typeof setTimeout>;
+
     const handleMotion = (event: DeviceMotionEvent) => {
+        setSensorActive(true);
         if (isTransitioningRef.current) return;
         
         const accel = event.accelerationIncludingGravity;
@@ -125,13 +129,13 @@ export const GameScreen: React.FC<GameScreenProps> = ({ words, onFinish, gameDur
         // Logic:
         // Z-axis detects if screen is facing up (sky) or down (floor).
         // Neutral (Vertical on forehead): Z is near 0.
-        // Screen Facing Ceiling (Pass): Z > 7 (approx near 9.8)
-        // Screen Facing Floor (Correct): Z < -7 (approx near -9.8)
+        // Screen Facing Ceiling (Pass): Z > Threshold
+        // Screen Facing Floor (Correct): Z < -Threshold
         
         const z = accel.z || 0;
         
-        // Thresholds
-        const THRESHOLD = 6.0;
+        // Lowered threshold for better sensitivity (approx 20 degrees tilt)
+        const THRESHOLD = 3.0;
 
         if (z > THRESHOLD) {
             // Screen facing UP -> PASS
@@ -144,11 +148,19 @@ export const GameScreen: React.FC<GameScreenProps> = ({ words, onFinish, gameDur
 
     if (window.DeviceMotionEvent) {
         window.addEventListener('devicemotion', handleMotion);
+        // Check if sensor is working after 3 seconds
+        sensorTimeout = setTimeout(() => {
+            if (!sensorActive) {
+                console.warn("No device motion detected.");
+            }
+        }, 3000);
     }
+    
     return () => {
         if (window.DeviceMotionEvent) {
             window.removeEventListener('devicemotion', handleMotion);
         }
+        clearTimeout(sensorTimeout);
     }
   }, [handleNextCard]);
 
@@ -165,6 +177,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({ words, onFinish, gameDur
   }
 
   const currentWord = words[currentWordIndex];
+  if (!currentWord) return null; // Safety check
 
   return (
     <div className={`fixed inset-0 flex flex-col items-center justify-center transition-colors duration-300 ${bgColor}`}>
@@ -174,12 +187,19 @@ export const GameScreen: React.FC<GameScreenProps> = ({ words, onFinish, gameDur
         {timeLeft}
       </div>
 
+      {/* Sensor Warning if not active */}
+      {!sensorActive && timeLeft < (gameDuration - 3) && (
+          <div className="absolute top-24 bg-red-500/80 text-white px-4 py-2 rounded-full text-sm animate-pulse z-20">
+              ⚠️ Sensores no detectados. Usa los botones.
+          </div>
+      )}
+
       {/* Main Card Content */}
       <div className="w-full h-full flex flex-col items-center justify-center p-8 text-center relative z-0">
           
           {turnStatus === TurnStatus.NEUTRAL ? (
              <div className="animate-bounce-in w-full max-w-4xl">
-                 <h1 className="text-[10vh] md:text-[15vh] leading-none font-black uppercase drop-shadow-md break-words mx-4 perspective-text text-yellow-300">
+                 <h1 className="text-[12vh] md:text-[18vh] leading-none font-black uppercase drop-shadow-md break-words mx-4 perspective-text text-yellow-300">
                     {currentWord.word}
                  </h1>
                  <div className="mt-8 text-xl md:text-2xl opacity-80 font-semibold animate-pulse space-y-2">
@@ -197,21 +217,19 @@ export const GameScreen: React.FC<GameScreenProps> = ({ words, onFinish, gameDur
       </div>
 
       {/* Manual Controls (Always visible on Web/Desktop, subtle on mobile) */}
-      <div className="absolute bottom-0 w-full flex h-24 md:h-32 opacity-40 hover:opacity-100 transition-opacity z-20">
-          <button 
-            className="flex-1 bg-red-600 hover:bg-red-500 h-full text-white font-bold text-xl flex flex-col items-center justify-center" 
+      <div className="absolute bottom-0 w-full flex h-32 opacity-10 md:opacity-100 z-30">
+        <button 
+            className="flex-1 bg-red-500/50 hover:bg-red-500 flex items-center justify-center text-4xl"
             onClick={() => handleNextCard(TurnStatus.PASS)}
-          >
-            <span className="text-3xl mb-1">⬆️</span>
-            PASAR
-          </button>
-          <button 
-            className="flex-1 bg-green-600 hover:bg-green-500 h-full text-white font-bold text-xl flex flex-col items-center justify-center" 
+        >
+            ❌
+        </button>
+        <button 
+            className="flex-1 bg-green-500/50 hover:bg-green-500 flex items-center justify-center text-4xl"
             onClick={() => handleNextCard(TurnStatus.CORRECT)}
-          >
-            <span className="text-3xl mb-1">⬇️</span>
-            CORRECTO
-          </button>
+        >
+            ✅
+        </button>
       </div>
     </div>
   );
