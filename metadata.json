@@ -1,0 +1,5 @@
+{
+  "name": "Chilango Guess: Adivina la Palabra",
+  "description": "Un juego de adivinanzas (charadas) con jerga de la Ciudad de México. Ponte el celular en la frente y adivina la palabra que te describen tus amigos.",
+  "requestFramePermissions": []
+}

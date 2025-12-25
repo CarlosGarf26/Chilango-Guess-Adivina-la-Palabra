@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="https://upload.wikimedia.org/wikipedia/commons/f/fc/Flag_of_Mexico.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Chilango Guess</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap');
+      body {
+        font-family: 'Fredoka', sans-serif;
+        overscroll-behavior: none;
+        user-select: none;
+        -webkit-touch-callout: none;
+      }
+      .perspective-text {
+        text-shadow: 2px 2px 0px #000;
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "@google/genai": "https://esm.sh/@google/genai@^1.34.0",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react": "https://esm.sh/react@^19.2.3"
+  }
+}
+</script>
+</head>
+  <body class="bg-slate-900 text-white overflow-hidden">
+    <div id="root"></div>
+  </body>
+</html>
